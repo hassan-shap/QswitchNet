@@ -1,0 +1,21 @@
+Finished!
+results/dist/lw_10.00_qres_1.0_r_14.npz, events: (1000,), elapsed time 828.86425614357 sec
+results/dist/lw_10.00_qres_1.0_r_19.npz, events: (1000,), elapsed time 829.4105322360992 sec
+results/dist/lw_10.00_qres_1.0_r_11.npz, events: (1000,), elapsed time 831.9333055019379 sec
+results/dist/lw_10.00_qres_1.0_r_9.npz, events: (1000,), elapsed time 862.4318730831146 sec
+results/dist/lw_10.00_qres_1.0_r_17.npz, events: (1000,), elapsed time 866.051412820816 sec
+results/dist/lw_10.00_qres_1.0_r_13.npz, events: (1000,), elapsed time 867.9665269851685 sec
+results/dist/lw_10.00_qres_1.0_r_16.npz, events: (1000,), elapsed time 868.0390367507935 sec
+results/dist/lw_10.00_qres_1.0_r_1.npz, events: (1000,), elapsed time 868.7685074806213 sec
+results/dist/lw_10.00_qres_1.0_r_0.npz, events: (1000,), elapsed time 871.3926515579224 sec
+results/dist/lw_10.00_qres_1.0_r_3.npz, events: (1000,), elapsed time 873.0177793502808 sec
+results/dist/lw_10.00_qres_1.0_r_6.npz, events: (1000,), elapsed time 875.1271109580994 sec
+results/dist/lw_10.00_qres_1.0_r_4.npz, events: (1000,), elapsed time 875.8629789352417 sec
+results/dist/lw_10.00_qres_1.0_r_7.npz, events: (1000,), elapsed time 879.5671215057373 sec
+results/dist/lw_10.00_qres_1.0_r_8.npz, events: (1000,), elapsed time 882.3237595558167 sec
+results/dist/lw_10.00_qres_1.0_r_12.npz, events: (1000,), elapsed time 883.2611119747162 sec
+results/dist/lw_10.00_qres_1.0_r_5.npz, events: (1000,), elapsed time 884.5386393070221 sec
+results/dist/lw_10.00_qres_1.0_r_10.npz, events: (1000,), elapsed time 892.713374376297 sec
+results/dist/lw_10.00_qres_1.0_r_15.npz, events: (1000,), elapsed time 888.7667484283447 sec
+results/dist/lw_10.00_qres_1.0_r_2.npz, events: (1000,), elapsed time 888.9311475753784 sec
+results/dist/lw_10.00_qres_1.0_r_18.npz, events: (1000,), elapsed time 885.5045645236969 sec
