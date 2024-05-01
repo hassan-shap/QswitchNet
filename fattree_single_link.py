@@ -11,16 +11,16 @@ switch_duration = 1e-3 # average switching delay in sec
 Nrep = 28 # No. of repetitions for saving separate files
 Niter = 200  # number of repetions for ensemble averaging
 
-n_list = [4, 8, 16, 32] # number of core switch ports
+n_list = [32] # number of core switch ports
 lam_gate_list = np.linspace(0.01,0.5,20)  # mean of the Poisson distribution
 
 T = np.zeros(len(lam_gate_list))
 dT = np.zeros(len(lam_gate_list))
 Nq = np.zeros(len(lam_gate_list))
 
+num_node_list =[]
 for n in n_list:
-
-    G, vertex_list = clos(n, n-2)
+    G, vertex_list = fat_tree(n)
     _, _, _, node_list = vertex_list
     num_node = len(node_list)
     def runner(i_rep):
@@ -36,7 +36,7 @@ for n in n_list:
 
         toc = time.time()
 
-        fname = f"results/network_sim/clos_noToR_n_{n}_gen_{1e3/gen_rate:.1f}_sw_{1e3*switch_duration:.1f}_r_{i_rep}.npz"
+        fname = f"results/network_sim/fattree_n_{n}_gen_{1e3/gen_rate:.1f}_sw_{1e3*switch_duration:.1f}_r_{i_rep}.npz"
         print(f"{fname}, elapsed time {toc-tic} sec")
         np.savez(fname, lam_gate_list, num_node, Nq, T, dT)
 
