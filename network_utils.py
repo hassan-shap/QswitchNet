@@ -11,9 +11,12 @@ def time_spdc(k_list):
 
 # time_spdc = lambda k: (1/np.arange(1,k+1)).sum()
 
-def network_latency(G, vertex_list, gen_rate, switch_duration, query_seq):
+def network_latency(G, vertex_list, gen_rate, switch_duration, query_seq, hyperx=False):
     # print(query_seq)
-    core_switches, agg_switches, edge_switches, node_list = vertex_list
+    if hyperx:
+        edge_switches, node_list = vertex_list
+    else:
+       core_switches, agg_switches, edge_switches, node_list = vertex_list
     num_nodes = len(node_list)
     num_edge = len(edge_switches)
     latency = np.zeros(len(query_seq))
@@ -201,4 +204,49 @@ def fat_tree(n):
             G.add_edge(edge,node_list[(n//2)*i+j])
 
     vertex_list = core_switches, agg_switches, edge_switches, node_list
+    return G, vertex_list
+
+def hyperX(S,L,num_ToR):
+    # S = 3 # number of switches for each dim (assuming uniform/regular hyperX network)
+    # L = 2 #len(S) # number of lattice dims
+    # K = 1 # link bandwidth
+
+    # num_ToR = 4 # T: number of terminals (nodes per rack)
+    num_switches = S**L
+    num_nodes =  num_switches * num_ToR
+
+    G = nx.Graph()
+    edge_switches = [] #np.zeros(num_switches,L)
+    for sw in range(num_switches):
+        result = ""
+        for i_l in range(L):
+            if sw > 0:
+                remainder = sw % S
+                result = f"{remainder}," + result
+                sw //= S
+            else:
+                result = "0," + result
+
+        edge_switches.append(result[:-1])
+
+    G.add_nodes_from(edge_switches, type='switch')
+
+    node_list = range(1,num_nodes+1)
+    G.add_nodes_from(node_list, type='node')
+
+    for i, sw in enumerate(edge_switches):
+        for j in range(num_ToR):
+            G.add_edge(sw,node_list[num_ToR*i+j])
+
+    for i1, sw1 in enumerate(edge_switches):
+        sw_vec = sw1.split(",")
+        for i_l in range(L):
+            sw_vals = list(set(range(S))-{int(sw_vec[i_l])})
+            for i_s in sw_vals:
+                sw2 = sw_vec[:]
+                sw2[i_l]= f"{i_s}"
+                
+                G.add_edge(sw1,",".join(sw2))
+
+    vertex_list = edge_switches, node_list
     return G, vertex_list

@@ -22,12 +22,13 @@ Nq = np.zeros((len(num_ToR_list),len(lam_gate_list)))
 for n in n_list:
     def runner(i_rep):
         tic = time.time()
-
+        num_node_list = []
         for i_tor, num_ToR in enumerate(num_ToR_list):
 
             G, vertex_list = clos(n, num_ToR)
             _, _, _, node_list = vertex_list
             num_node = len(node_list)
+            num_node_list.append(num_node) 
 
             for i_l, lam_gate_seq in enumerate(lam_gate_list):
                 query_seq = np.random.poisson(lam_gate_seq*num_node, Niter)
@@ -41,7 +42,7 @@ for n in n_list:
 
         fname = f"results/network_sim/clos_n_{n}_gen_{1e3/gen_rate:.1f}_sw_{1e3*switch_duration:.1f}_r_{i_rep}.npz"
         print(f"{fname}, elapsed time {toc-tic} sec")
-        np.savez(fname, num_ToR_list, lam_gate_list, num_node, Nq, T, dT)
+        np.savez(fname, num_ToR_list, lam_gate_list, num_node_list, Nq, T, dT)
 
     results = Parallel(n_jobs=num_cores)(delayed(runner)(i_rep) for i_rep in range(Nrep))
 
