@@ -11,7 +11,7 @@ switch_duration = 1e-3 # average switching delay in sec
 Nrep = 28 # No. of repetitions for saving separate files
 Niter = 200  # number of repetions for ensemble averaging
 
-n_list = [4, 8, 16, 32] # number of core switch ports
+n_list = [4, 8, 16] # number of core switch ports
 lam_gate_list = np.linspace(0.1,0.5,15)  # mean of the Poisson distribution
 num_ToR_list = range(2,11,2)
 

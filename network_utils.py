@@ -67,10 +67,15 @@ def network_latency(G, vertex_list, gen_rate, switch_duration, query_seq, hyperx
                             bsm_stat[b[1]] = 1
                             for u, v in sp:
                                 G_ins.remove_edge(u, v)
+                        else:
+                            inds_keep.append(i_g)
+
                     elif bsm_stat[b] == 0:
                         bsm_stat[b] = 1
                         for u, v in sp:
                             G_ins.remove_edge(u, v)
+                    else:
+                        inds_keep.append(i_g)
 
                 else:
                     inds_keep.append(i_g)
