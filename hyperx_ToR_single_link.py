@@ -9,9 +9,9 @@ num_cores = 28
 gen_rate = 1/(1e-2) # ebit average generation time in sec
 switch_duration = 1e-3 # average switching delay in sec
 Nrep = 28 # No. of repetitions for saving separate files
-Niter = 200  # number of repetions for ensemble averaging
+Niter = 100  # number of repetions for ensemble averaging
 
-S = 4 # number of switches for each dim (assuming uniform/regular hyperX network)
+S = 10 # number of switches for each dim (assuming uniform/regular hyperX network)
 L = 3 #len(S) # number of lattice dims
 lam_gate_list = np.linspace(0.1,0.5,15)  # mean of the Poisson distribution
 num_ToR_list = range(2,11,2)
