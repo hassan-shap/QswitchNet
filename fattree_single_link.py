@@ -9,7 +9,7 @@ num_cores = 28
 gen_rate = 1/(1e-2) # ebit average generation time in sec
 switch_duration = 1e-3 # average switching delay in sec
 Nrep = 28 # No. of repetitions for saving separate files
-Niter = 200  # number of repetions for ensemble averaging
+Niter = 20  # number of repetions for ensemble averaging
 
 n_list = [32] # number of core switch ports
 lam_gate_list = np.linspace(0.01,0.5,20)  # mean of the Poisson distribution
