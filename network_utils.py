@@ -154,6 +154,102 @@ def network_latency_circuit(G, vertex_list, gen_rate, switch_duration, query_seq
         latency[i_q] = 1/gen_rate*time_spdc(np.array(switch_time)).sum() + switch_duration*len(switch_time)
     return latency
 
+###
+
+
+def network_latency_multiqubit_circuit(G, vertex_list, num_bsm, gen_rate, switch_duration, query_seq, gate_mul_seq, hyperx=False):
+
+    if hyperx:
+        edge_switches, node_list = vertex_list
+    else:
+       core_switches, agg_switches, edge_switches, node_list, node_qubit_list = vertex_list
+
+    # num_nodes = len(node_list)
+    num_edge = len(edge_switches)
+    latency = np.zeros(len(query_seq))
+    for i_q, gate_seq in enumerate(query_seq):
+
+        gate_seq_iter = gate_seq[:]
+        gate_mul_seq_iter = gate_mul_seq[i_q]
+
+        switch_time = []
+        while len(gate_seq_iter)>0:
+            bsm_stat = np.ones(num_edge,dtype=np.int16)* num_bsm
+            G_ins =  G.copy()
+
+            inds_keep = []
+            for i_g, g in enumerate(gate_seq_iter):
+
+                for link in range(gate_mul_seq_iter[g]):
+                    n0 = g[0]
+                    n1 = g[1]
+                    if nx.has_path(G_ins,n0,n1):
+                        shortestpath = nx.shortest_path(G_ins,n0,n1,weight=None)
+                        
+                        sp = []
+                        for i in range(0,len(shortestpath)-1):
+                            sp.append((shortestpath[i],shortestpath[i+1]))
+                        
+                        b = []
+                        for i, edge in enumerate(edge_switches):
+                            if edge in shortestpath:
+                                b.append(i)
+                        
+                        if len(b)>1:
+                            if bsm_stat[b[0]] > 0 and bsm_stat[b[1]] > 0:
+                                bsm_stat[random.sample(b,1)] -= 1
+                                for u, v in sp:
+                                    if G_ins[u][v]['weight'] == 1:
+                                        G_ins.remove_edge(u, v)
+                                    else:
+                                        G_ins[u][v]['weight'] -= 1
+
+                            elif bsm_stat[b[0]] > 0:
+                                bsm_stat[b[0]] -= 1
+                                for u, v in sp:
+                                    if G_ins[u][v]['weight'] == 1:
+                                        G_ins.remove_edge(u, v)
+                                    else:
+                                        G_ins[u][v]['weight'] -= 1
+            
+                            elif bsm_stat[b[1]] > 0:
+                                bsm_stat[b[1]] -= 1
+                                for u, v in sp:
+                                    if G_ins[u][v]['weight'] == 1:
+                                        G_ins.remove_edge(u, v)
+                                    else:
+                                        G_ins[u][v]['weight'] -= 1
+
+                            else:
+                                inds_keep.append(i_g)
+                                gate_mul_seq_iter[g] -= link
+                                break
+
+                        elif bsm_stat[b] > 0:
+                            bsm_stat[b] -= 1
+                            for u, v in sp:
+                                if G_ins[u][v]['weight'] == 1:
+                                    G_ins.remove_edge(u, v)
+                                else:
+                                    G_ins[u][v]['weight'] -= 1
+                        else:
+                            inds_keep.append(i_g)
+                            gate_mul_seq_iter[g] -= link
+                            break
+                    else:
+                        inds_keep.append(i_g)
+                        gate_mul_seq_iter[g] -= link
+                        break
+
+            switch_time.append(np.array(num_bsm-bsm_stat).sum())
+            
+            gate_seq_iter = [gate_seq_iter[idx] for idx in inds_keep]
+            gate_mul_seq_iter = {g:gate_mul_seq_iter[g] for g in gate_seq_iter}
+
+        latency[i_q] = 1/gen_rate*time_spdc(np.array(switch_time)).sum() + switch_duration*len(switch_time)
+    
+    return latency
+
 ## from circuit to execution rounds
 def parallel_circuit_gen(node_list, num_gates):
     # node_list = range(1,5)
@@ -204,6 +300,72 @@ def parallel_circuit_gen(node_list, num_gates):
 
     return query_seq, gate_mul_seq
 
+def parallel_qft_circuit_gen(node_qubit_list):
+    # num_nodes = len(node_list)
+    # qubit_list = range(qubits_per_node)
+
+    num_qubits = len(node_qubit_list)
+
+    gate_seq = []
+    for target in range(num_qubits-1,0,-1):
+        for control in range(target-1,-1,-1):
+            gate_seq.append((node_qubit_list[control],node_qubit_list[target]))
+
+    Q = nx.Graph()
+    Q.add_nodes_from(node_qubit_list)
+
+    gate_seq_iter = gate_seq.copy()
+
+    query_seq = []
+    query = []
+    gate_mul = {}
+    gate_mul_seq = []
+    while len(gate_seq_iter)>0:
+        # print(gate_seq_iter)
+        inds_keep = []
+        not_block_gate = True
+        for i_g, gate_nodes in enumerate(gate_seq_iter):
+            if Q.degree[gate_nodes[0]] > 0 or Q.degree[gate_nodes[1]] > 0:
+                if gate_nodes in query and not_block_gate:
+                    gate_mul[gate_nodes] += 1
+                    # query.append(gate_nodes)
+                else:
+                    Q.add_edge(gate_nodes[0],gate_nodes[1])
+                    inds_keep.append(i_g)
+                    not_block_gate = False
+            else:
+                Q.add_edge(gate_nodes[0],gate_nodes[1])
+                query.append(gate_nodes)
+                gate_mul[gate_nodes] =  1
+                not_block_gate = True
+
+        query_seq.append(query)
+        gate_mul_seq.append(gate_mul)
+        query = []
+        gate_mul = {}
+        Q = nx.Graph()
+        Q.add_nodes_from(node_qubit_list)
+        gate_seq_iter = [gate_seq_iter[idx] for idx in inds_keep]
+
+
+    remote_query_seq = []
+    remote_gate_mul_seq = []
+    for i_q, query in enumerate(query_seq):
+        remote_query = []
+        remote_gate_mul = {}
+        # print(query)
+        for gate in query:
+            if gate[0].split(",")[0] != gate[1].split(",")[0]:
+                remote_query.append(gate)
+                remote_gate_mul[gate] = gate_mul_seq[i_q][gate]
+        if len(remote_query)>0:
+            remote_query_seq.append(remote_query)
+            remote_gate_mul_seq.append(remote_gate_mul)
+
+    
+    return remote_query_seq, remote_gate_mul_seq
+##############################################################
+##############################################################
 # network topology generating functions
 
 def clos(n, num_ToR):
@@ -451,3 +613,71 @@ def clos_multilink(n, num_ToR, bandwidth):
     vertex_list = core_switches, agg_switches, edge_switches, node_list
     return G, vertex_list
 
+def clos_multiqubit(n, num_ToR, num_qubits_per_node, bandwidth):
+
+    num_core = n // 2
+    num_agg = n
+    num_edge = n**2 // 4
+    num_nodes = num_edge * num_ToR # number of q nodes
+    # num_bsms = num_leaves # number of BSMs
+
+    # if n==4:
+    #     conn_right = [7]
+    #     conn_left = [8]
+    # elif n==6:
+    #     conn_right = [11,14]
+    #     conn_left = [12,15]
+    # elif n==8:
+    #     conn_right = [15,19,23]
+    #     conn_left = [16,20,24]
+
+    num_vertices = num_core + num_agg + num_edge + num_nodes
+    core_bw = 4*bandwidth
+    agg_bw = 2*bandwidth
+    edge_bw = bandwidth
+
+    G = nx.Graph()
+    core_switches = range(num_core)
+    G.add_nodes_from(core_switches, type='core')
+    agg_switches = range(num_core,num_core+num_agg)
+    G.add_nodes_from(agg_switches, type='agg')
+    edge_switches = range(num_core+num_agg,num_core + num_agg + num_edge)
+    G.add_nodes_from(edge_switches, type='agg')
+    node_list = range(num_core + num_agg + num_edge,num_vertices)
+    G.add_nodes_from(node_list, type='node')
+    node_qubit_list = []
+    for node in node_list:
+        for qubit in range(num_qubits_per_node):
+            qname = f"{node},{qubit}"
+            node_qubit_list.append(qname)
+            G.add_edge(node,qname, weight=1)
+            
+    for core in core_switches:
+        for agg in agg_switches:
+            G.add_edge(core,agg, weight=core_bw)
+
+    # new_edges = []
+    # extra_edges = []
+    agg_conn = np.ones(num_agg)* (n//2)
+    for i, edge in enumerate(edge_switches):
+        i1 = np.argwhere(agg_conn>0)[0,0]
+        G.add_edge(edge,agg_switches[i1], weight=agg_bw)
+        agg_conn[i1] -= 1 
+        # if edge in conn_left:
+        #     extra_edges.append((edge,agg_switches[i1]))
+        #     new_edges.append((edge,agg_switches[i1-1]))
+        G.add_edge(edge,agg_switches[i1+1], weight=agg_bw)
+        agg_conn[i1+1] -= 1 
+    #     if edge in conn_right:
+    #         extra_edges.append((edge,agg_switches[i1+1]))
+    #         new_edges.append((edge,agg_switches[i1+2]))
+
+    # G.remove_edges_from(extra_edges)
+    # G.add_edges_from(new_edges, weight=agg_bw)
+
+    for i, edge in enumerate(edge_switches):
+        for j in range(num_ToR):
+            G.add_edge(edge,node_list[num_ToR*i+j], weight=edge_bw)
+
+    vertex_list = core_switches, agg_switches, edge_switches, node_list, node_qubit_list
+    return G, vertex_list
