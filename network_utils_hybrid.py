@@ -87,8 +87,8 @@ def network_latency_multiqubit_hybrid(G, vertex_list, query_seq, gate_mul_seq):
                         gate_mul_seq_iter[g] -= link
                         break
 
-            # switch_time.append([num_ir_swap, num_tel_swap])
-            switch_time.append(num_ir_swap)
+            switch_time.append([num_ir_swap, num_tel_swap])
+            # switch_time.append(num_ir_swap)
 
             gate_seq_iter = [gate_seq_iter[idx] for idx in inds_keep]
             gate_mul_seq_iter = {g:gate_mul_seq_iter[g] for g in gate_seq_iter}
@@ -203,3 +203,75 @@ def tor_switch(specs):
 
     vertex_list = edge_switches, node_list, node_qubit_list 
     return G, vertex_list
+
+def clos_hybrid(specs):
+    n = specs["num_sw_ports"] # starts from 4
+    num_ToR = specs["num_ToR"]
+    num_qubits_per_node = specs["qs_per_node"]
+
+    num_bsm_edge = specs["num_bsm_ir"]
+    num_bsm_agg = specs["num_bsm_tel"]
+    num_pd = specs["num_pd"]
+    num_laser = specs["num_laser"]
+    num_bs = specs["num_bs"]
+    num_es = specs["num_es"]
+
+    bandwidth = specs["bandwidth"]
+
+    num_core = n // 2
+    num_agg = n
+    num_edge = n**2 // 4
+    num_nodes = num_edge * num_ToR # number of q nodes
+    # num_bsms = num_leaves # number of BSMs
+
+    num_vertices = num_core + num_agg + num_edge + num_nodes
+    core_bw = 4*bandwidth
+    agg_bw = 2*bandwidth
+    edge_bw = bandwidth
+
+    G = nx.Graph()
+    ## adding node attributes
+    # "PD", "BSM", "Laser", "BS", "ES"
+    attrs = {}
+
+    core_switches = range(num_core)
+    G.add_nodes_from(core_switches, type='core')
+    for core in core_switches:
+        attrs[core] = {"PD": 0, "BSM_ir":0, "BSM_tel":0, "Laser":0, "BS":0, "ES":0}
+    agg_switches = range(num_core,num_core+num_agg)
+    G.add_nodes_from(agg_switches, type='agg')
+    for agg in agg_switches:
+        attrs[agg] = {"PD": 0, "BSM_ir":0, "BSM_tel":num_bsm_agg, "Laser":0, "BS":0, "ES":0}
+    edge_switches = range(num_core+num_agg,num_core + num_agg + num_edge)
+    G.add_nodes_from(edge_switches, type='edge')
+    for edge in edge_switches:
+        attrs[edge] = {"PD": num_pd, "BSM_ir": num_bsm_edge, "BSM_tel":0, "Laser": num_laser, "BS": num_bs, "ES": num_es}
+    node_list = range(num_core + num_agg + num_edge,num_vertices)
+    G.add_nodes_from(node_list, type='node')
+    node_qubit_list = []
+    for node in node_list:
+        for qubit in range(num_qubits_per_node):
+            qname = f"{node},{qubit}"
+            node_qubit_list.append(qname)
+            G.add_edge(node,qname, weight=1)
+            
+    nx.set_node_attributes(G, attrs)
+    for core in core_switches:
+        for agg in agg_switches:
+            G.add_edge(core,agg, weight=core_bw)
+
+    agg_conn = np.ones(num_agg)* (n//2)
+    for i, edge in enumerate(edge_switches):
+        i1 = np.argwhere(agg_conn>0)[0,0]
+        G.add_edge(edge,agg_switches[i1], weight=agg_bw)
+        agg_conn[i1] -= 1 
+        G.add_edge(edge,agg_switches[i1+1], weight=agg_bw)
+        agg_conn[i1+1] -= 1 
+
+    for i, edge in enumerate(edge_switches):
+        for j in range(num_ToR):
+            G.add_edge(edge,node_list[num_ToR*i+j], weight=edge_bw)
+
+    vertex_list = edge_switches, node_list, node_qubit_list 
+    return G, vertex_list
+
