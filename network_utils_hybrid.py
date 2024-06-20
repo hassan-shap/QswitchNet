@@ -41,6 +41,8 @@ def network_latency_multiqubit_hybrid(G, vertex_list, query_seq, gate_mul_seq):
             G_ins =  G.copy()
 
             inds_keep = []
+            ####
+            # g_exec = [] ###
             for i_g, g in enumerate(gate_seq_iter):
                 for link in range(gate_mul_seq_iter[g]):
                     n0 = g[0]
@@ -76,6 +78,9 @@ def network_latency_multiqubit_hybrid(G, vertex_list, query_seq, gate_mul_seq):
                                     num_ir_swap += 1
                                 
                                 path_found = True
+                                # ####
+                                # g_exec.append(g)
+                                # #####
                                 break
             
                         if not path_found:
@@ -92,7 +97,11 @@ def network_latency_multiqubit_hybrid(G, vertex_list, query_seq, gate_mul_seq):
 
             gate_seq_iter = [gate_seq_iter[idx] for idx in inds_keep]
             gate_mul_seq_iter = {g:gate_mul_seq_iter[g] for g in gate_seq_iter}
-   
+            #####
+            # print(g_exec)
+            # print(switch_time)
+            # break
+        #########
         switch_seq.append(switch_time)
         # 1/gen_rate*time_spdc(np.array(switch_time)).sum() + switch_duration*len(switch_time)
     return switch_seq
@@ -114,7 +123,11 @@ def parallel_circuit_gen(node_list, qubits_per_node, num_gates):
     connections = []
     for i in range(num_nodes):
         for j in range(i+1,num_nodes):
-            connections.append((node_list[i],node_list[j]))
+            # connections.append((node_list[i],node_list[j]))
+            if np.random.rand() > 0.5:
+                connections.append((node_list[i],node_list[j]))
+            else:
+                connections.append((node_list[j],node_list[i]))
 
     gate_seq_nodes = random.choices(connections, k=num_gates)
     # print(gate_seq_nodes)
@@ -247,6 +260,8 @@ def clos_hybrid(specs):
     for edge in edge_switches:
         attrs[edge] = {"PD": num_pd, "BSM_ir": num_bsm_edge, "BSM_tel":0, "Laser": num_laser, "BS": num_bs, "ES": num_es}
     node_list = range(num_core + num_agg + num_edge,num_vertices)
+    for qpu in node_list:
+        attrs[qpu] = {"comm": bandwidth}
     G.add_nodes_from(node_list, type='node')
     node_qubit_list = []
     for node in node_list:
