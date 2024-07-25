@@ -5,7 +5,7 @@ import time
 import json
 
 Nrep = 10
-num_ToR = 4
+num_ToR = 3
 n = 6 # must be even, starts from 4
 
 specs = {
