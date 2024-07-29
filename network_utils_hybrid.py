@@ -110,6 +110,100 @@ def network_latency_multiqubit_hybrid(G, vertex_list, query_seq, gate_mul_seq):
         # 1/gen_rate*time_spdc(np.array(switch_time)).sum() + switch_duration*len(switch_time)
     return switch_seq
 
+def eff_network_latency_dag_multiqubit_hybrid(G, vertex_list, gate_seq_input):
+    edge_switches, node_list, node_qubit_list = vertex_list
+    num_nodes = len(node_list)
+    num_edge = len(edge_switches)
+    num_qubits = len(node_qubit_list)
+
+    qubit_nx_to_qiskit = {qubit: idx for idx, qubit in enumerate(node_qubit_list)}
+
+    qiskit_q_list = QuantumRegister(num_qubits, "q")
+    circ = QuantumCircuit(qiskit_q_list)
+
+    for g in gate_seq_input:
+        circ.cx(qubit_nx_to_qiskit[g[0]], qubit_nx_to_qiskit[g[1]])
+
+    dag = circuit_to_dag(circ)
+
+    num_decendants = []
+    for node in dag.front_layer():
+        num_decendants.append(len([g for g in dag.bfs_successors(node)])-1)
+    circ_depth = max(num_decendants)
+
+    dag_qubit_map = {bit: index for index, bit in enumerate(dag.qubits)}
+    switch_seq = []
+
+    while len(dag.gate_nodes())>0:
+
+        G_ins =  G.copy()
+        num_ir_swap = 0
+        num_tel_swap = 0
+        execute = True
+        while execute:
+            execute = False
+
+            indep_gate_seq = []
+            dag_node_seq = []
+            num_decendants = []
+            for node in dag.front_layer():
+                if node.op.num_qubits< 2:
+                    dag.remove_op_node(node)
+                if node.op.num_qubits>= 2:
+                    indep_gate_seq.append((node_qubit_list[dag_qubit_map[node.qargs[0]]],node_qubit_list[dag_qubit_map[node.qargs[1]]]))
+                    dag_node_seq.append(node)
+                    num_decendants.append(len([g for g in dag.bfs_successors(node)])-1)
+
+            sorted_idx = sorted(range(len(num_decendants)), key=lambda k: num_decendants[k], reverse=True)
+            # sorted_idx = sorted(range(len(num_decendants)), key=lambda x: random.random())
+            dag_node_seq = [dag_node_seq[k] for k in sorted_idx]
+            indep_gate_seq = [indep_gate_seq[k] for k in sorted_idx]
+
+            for i_g, g in enumerate(indep_gate_seq):
+                # print(g)
+                n0 = g[0]
+                n1 = g[1]
+                if nx.has_path(G_ins,n0,n1):
+                    paths = nx.all_shortest_paths(G_ins, n0, n1, weight=None)
+                    for shortestpath in paths:
+                        if len(shortestpath)<= 3 :
+                            dag.remove_op_node(dag_node_seq[i_g])
+                            break
+                        elif len(shortestpath)> 5 :
+                            tel_ir = "tel"
+                        else:
+                            tel_ir = "ir"
+
+                        sp = []
+                        b = []
+                        # for i in range(0,len(shortestpath)-1):
+                        for i in range(1,len(shortestpath)-2):
+                            sp.append((shortestpath[i],shortestpath[i+1]))
+                            if 1 < i < len(shortestpath)-2:
+                                sw = shortestpath[i]
+                                if G_ins.nodes[sw]["BSM_"+tel_ir] > 0:
+                                    b.append(sw)
+                        
+                        if len(b)>=1:
+                            sw_bsm = random.sample(b,1)[0]
+                            G_ins.nodes[sw_bsm]["BSM_"+tel_ir]-= 1
+                            for u, v in sp:
+                                if G_ins[u][v]['weight'] == 1:
+                                    G_ins.remove_edge(u, v)
+                                else:
+                                    G_ins[u][v]['weight'] -= 1
+                            if  tel_ir == "tel":
+                                num_tel_swap += 1
+                            else:
+                                num_ir_swap += 1
+                            
+                            dag.remove_op_node(dag_node_seq[i_g])
+                            execute = True
+                            break
+
+        switch_seq.append([num_ir_swap, num_tel_swap])
+    return switch_seq, circ_depth
+
 def network_latency_dag_multiqubit_hybrid(G, vertex_list, gate_seq_input):
 
     edge_switches, node_list, node_qubit_list = vertex_list
@@ -143,6 +237,7 @@ def network_latency_dag_multiqubit_hybrid(G, vertex_list, gate_seq_input):
                 num_decendants.append(len([g for g in dag.bfs_successors(node)])-1)
 
         sorted_idx = sorted(range(len(num_decendants)), key=lambda k: num_decendants[k], reverse=True)
+        # sorted_idx = sorted(range(len(num_decendants)), key=lambda x: random.random())
         dag_node_seq = [dag_node_seq[k] for k in sorted_idx]
         indep_gate_seq = [indep_gate_seq[k] for k in sorted_idx]
 

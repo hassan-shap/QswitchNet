@@ -5,7 +5,7 @@ import time
 import json
 
 Nrep = 10
-num_ToR = 3
+num_ToR = 4
 n = 6 # must be even, starts from 4
 
 specs = {
@@ -57,11 +57,12 @@ for num_qubits in num_qubits_list:
         # T_tel = []
         # T_nir = []
         T_latency = []
+        latency_depth = []
         for _ in range(Nrep):
 
             # print(node_qubit_list)
             gate_seq = random.choices(connections, k=num_gates)
-            switch_seq = network_latency_dag_multiqubit_hybrid(G, vertex_list, gate_seq)
+            switch_seq, circ_depth = eff_network_latency_dag_multiqubit_hybrid(G, vertex_list, gate_seq)
             switch_seq = np.array(switch_seq)
 
             tel_latency = 1/telecom_gen_rate * time_spdc(switch_seq[:,1]) 
