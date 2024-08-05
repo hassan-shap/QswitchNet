@@ -4,10 +4,10 @@ import numpy as np
 import time
 import json
 
-Nrep = 100
+Nrep = 200
 num_ToR = 4
-n = 6 # must be even, starts from 4
-num_bsm_ir = 2
+n = 4 # must be even, starts from 4
+num_bsm_ir = 20
 
 specs = {
     "num_sw_ports": n,
@@ -47,21 +47,22 @@ for i in range(num_qubits):
             connections.append((node_qubit_list[j],node_qubit_list[i]))
 
 
-num_bsm_list = np.arange(2,17,2)
-num_comm_q_list = [2,4,8]
+num_tel_bsm_list = np.arange(2,21,1)
+num_ir_bsm_list = [4]#np.arange(10,81,10)
+num_comm_q_list = np.arange(2,11,1)
 
 
 for num_comm_q in num_comm_q_list:
     specs["bandwidth"] = num_comm_q
-    tic = time.time()
 
-    latency_list = []
-    # latency_depth_list = []
+    for num_bsm_ir in num_ir_bsm_list:
+        print(num_bsm_ir)
+        tic = time.time()
+        specs["num_bsm_ir"] = num_bsm_ir
+        JSON_PATH = f"results/bsm_sw/clos_{n}_{num_ToR}_nir_{num_bsm_ir}_comm_{num_comm_q}.json"
 
-    JSON_PATH = f"results/bsm_sw/clos_{n}_{num_ToR}_nir_{num_bsm_ir}_comm_{num_comm_q}.json"
-    with open(JSON_PATH, 'w') as json_file:
-
-        for num_bsm in num_bsm_list:
+        latency_list = []
+        for num_bsm in num_tel_bsm_list:
             specs["num_bsm_tel"] = num_bsm
             G, vertex_list = clos_hybrid(specs)
 
@@ -77,18 +78,14 @@ for num_comm_q in num_comm_q_list:
                 latency_combined = np.stack((tel_latency,nir_latency), axis = 1)
 
                 T_latency.append( np.max(latency_combined, axis = 1).sum() + switch_duration * switch_seq.shape[0] )
-                # circ_depths.append(circ_depth)
-                # T_latency = np.max(latency_combined, axis = 1).sum() + switch_duration * switch_seq.shape[0]
-                # latency_depth.append((T_latency,circ_depth))
-            # latency_list.append(sum(T_latency)/len(T_latency))
-            # print(T_latency, circ_depths)
+
             latency_list.append(T_latency)
             # latency_depth_list.append(latency_depth)
-
-        json_file.write(json.dumps(latency_list) + '\n')
+        with open(JSON_PATH, 'w') as json_file:
+            json_file.write(json.dumps(latency_list) + '\n')
         # json_file.write(json.dumps(circ_depths_list) + '\n')
 
-    toc = time.time()    
-    # print(latency_list)
+        toc = time.time()    
+        # print(latency_list)
 
-    print(f"elapsed time {toc-tic} sec")
+        print(f"elapsed time {toc-tic} sec")

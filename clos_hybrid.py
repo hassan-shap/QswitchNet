@@ -7,14 +7,16 @@ import json
 Nrep = 10
 num_ToR = 4
 n = 6 # must be even, starts from 4
+num_bsm_ir = 2
+num_bsm_tel = 2
 
 specs = {
     "num_sw_ports": n,
     "num_ToR" : num_ToR,
     "qs_per_node" : 10,
     "bandwidth" : 2,
-    "num_bsm_ir" : 2,
-    "num_bsm_tel" : 2,
+    "num_bsm_ir" : num_bsm_ir,
+    "num_bsm_tel" : num_bsm_tel,
     "num_pd" : 1, # inactive
     "num_laser" : 1, # inactive
     "num_bs" : 1, # inactive
@@ -50,29 +52,34 @@ for num_qubits in num_qubits_list:
             else:
                 connections.append((node_qubit_list[j],node_qubit_list[i]))
 
-    latency_list = []
+    JSON_PATH = f"results/clos_T_vs_depth/q_{num_qubits}_n_{n}_tor_{num_ToR}_tel_{num_bsm_tel}_nir_{num_bsm_ir}.json"
+    with open(JSON_PATH, 'w') as json_file:
 
-    for num_gates in num_gates_list:
-        # print(num_gates)
-        # T_tel = []
-        # T_nir = []
-        T_latency = []
-        latency_depth = []
-        for _ in range(Nrep):
+        latency_depth_list = []
+        for num_gates in num_gates_list:
+            # print(num_gates)
+            # T_tel = []
+            # T_nir = []
+            # T_latency = []
+            latency_depth = []
+            for _ in range(Nrep):
 
-            # print(node_qubit_list)
-            gate_seq = random.choices(connections, k=num_gates)
-            switch_seq, circ_depth = eff_network_latency_dag_multiqubit_hybrid(G, vertex_list, gate_seq)
-            switch_seq = np.array(switch_seq)
+                # print(node_qubit_list)
+                gate_seq = random.choices(connections, k=num_gates)
+                switch_seq, circ_depth = eff_network_latency_dag_multiqubit_hybrid(G, vertex_list, gate_seq)
+                switch_seq = np.array(switch_seq)
 
-            tel_latency = 1/telecom_gen_rate * time_spdc(switch_seq[:,1]) 
-            nir_latency = qubit_reset * np.array([time_nir[k] for k in switch_seq[:,0]])
-            latency_combined = np.stack((tel_latency,nir_latency), axis = 1)
+                tel_latency = 1/telecom_gen_rate * time_spdc(switch_seq[:,1]) 
+                nir_latency = qubit_reset * np.array([time_nir[k] for k in switch_seq[:,0]])
+                latency_combined = np.stack((tel_latency,nir_latency), axis = 1)
 
-            T_latency.append( np.max(latency_combined, axis = 1).sum() + switch_duration * switch_seq.shape[0] )
-        
-        latency_list.append(sum(T_latency)/len(T_latency))
+                T_latency =  np.max(latency_combined, axis = 1).sum() + switch_duration * switch_seq.shape[0] 
+                latency_depth.append((circ_depth, T_latency))
+
+            latency_depth_list.append(latency_depth)
+        json_file.write(json.dumps(latency_depth_list) + '\n')
+
 
     toc = time.time()    
-    print(latency_list)
+    # print(latency_list)
     print(f"elapsed time {toc-tic} sec")

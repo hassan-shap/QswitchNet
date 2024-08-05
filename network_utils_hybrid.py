@@ -126,10 +126,10 @@ def eff_network_latency_dag_multiqubit_hybrid(G, vertex_list, gate_seq_input):
 
     dag = circuit_to_dag(circ)
 
-    num_decendants = []
-    for node in dag.front_layer():
-        num_decendants.append(len([g for g in dag.bfs_successors(node)])-1)
-    circ_depth = max(num_decendants)
+    # num_decendants = []
+    # for node in dag.front_layer():
+    #     num_decendants.append(len([g for g in dag.bfs_successors(node)])-1)
+    circ_depth = dag.depth() #max(num_decendants)
 
     dag_qubit_map = {bit: index for index, bit in enumerate(dag.qubits)}
     switch_seq = []
@@ -219,6 +219,7 @@ def network_latency_dag_multiqubit_hybrid(G, vertex_list, gate_seq_input):
         circ.cx(qubit_nx_to_qiskit[g[0]], qubit_nx_to_qiskit[g[1]])
 
     dag = circuit_to_dag(circ)
+    circ_depth = dag.depth() #max(num_decendants)
     dag_qubit_map = {bit: index for index, bit in enumerate(dag.qubits)}
     switch_seq = []
 
@@ -286,7 +287,7 @@ def network_latency_dag_multiqubit_hybrid(G, vertex_list, gate_seq_input):
 
         switch_seq.append([num_ir_swap, num_tel_swap])
         
-    return switch_seq
+    return switch_seq, circ_depth
 
 # def parallel_circuit_gen(qubit_list, num_gates):
 #     num_nodes = len(node_list)
