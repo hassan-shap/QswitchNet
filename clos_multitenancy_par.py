@@ -44,8 +44,8 @@ specs = {
 #     time_nir = np.array(json.load(f))
 #     # print(time_nir)
 
-req_rate_list = np.logspace(-1,1,10)
-num_tel_bsm_list = np.arange(2,15,2)
+req_rate_list = np.logspace(-2,1.0,10)
+num_tel_bsm_list = [4] #np.arange(6,15,2)
 
 # num_ToR_list = np.arange(2,11,2)
 # for num_ToR in num_ToR_list:
@@ -75,7 +75,7 @@ for num_bsm_tel in num_tel_bsm_list:
             json_file.write(json.dumps(job_duration_wait_list) + '\n')
 
         toc = time.time()    
-        print(f"elapsed time {toc-tic} sec")
+        print(f"{i_rep}, elapsed time {toc-tic} sec")
 
     results = Parallel(n_jobs=num_cores)(delayed(runner)(i_rep) for i_rep in range(Nrep))
 

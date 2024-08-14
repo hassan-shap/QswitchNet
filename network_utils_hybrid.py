@@ -5,7 +5,7 @@ from qiskit import QuantumRegister, ClassicalRegister, QuantumCircuit
 from qiskit.dagcircuit import DAGCircuit
 from qiskit.converters import circuit_to_dag
 from qiskit.visualization import dag_drawer
-
+import json
 
 def time_spdc(k_list):
     harmonic = np.zeros(len(k_list))
@@ -68,6 +68,201 @@ def construct_dag(node_qubit_list, q_assignment, num_gates):
     # print(gate_seq)
     # print(circ)
     return dag, circ_depth, dag_qubit_map
+
+def clos_job_scheduler_qpu(specs, G, vertex_list, arrival_times):
+    JSON_PATH = "data/nir_latency.json"
+    with open(JSON_PATH) as f:
+        time_nir = np.array(json.load(f))
+        # print(time_nir)
+
+    n = specs["num_sw_ports"]
+    telecom_gen_rate = specs["telecom_gen_rate"]
+    qubit_reset = specs["qubit_reset"]
+    switch_duration = specs["switch_duration"]
+    num_ToR = specs["num_ToR"]
+    qs_per_node = specs["qs_per_node"]
+    qpu_vals = specs["qpu_vals"]
+    _, _, node_qubit_list = vertex_list
+
+    num_jobs = len(arrival_times)
+    # print(num_jobs)
+    # qpu_vals = [2,3,4,5,6]
+    qpu_reqs = np.random.choice(qpu_vals, num_jobs)
+
+    start_finish_times = np.zeros((num_jobs,2))
+    start_finish_times[:,1] = -1
+
+    avail_qpus = list(range(n**2//4 * num_ToR))
+    arrival_times_iter = arrival_times.copy()
+    qpu_reqs_iter = qpu_reqs.copy()
+    idx_remain_to_exec = list(range(num_jobs))
+
+    dags_list = {}
+    circ_depth_list = {}
+    dags_qubit_map = {}
+    compute_qs_list = {}
+    qpu_assign = {}
+    active_jobs = []
+
+    remain_gates = np.array([])
+    tic = 0.0
+
+    while len(dags_list)< num_jobs or remain_gates.sum()>0:
+
+        idx_to_exec = np.argwhere(arrival_times_iter<=tic)
+        if len(idx_to_exec)>0:
+            # print("----------------------")
+            # print(f"time: {tic}")
+            # print("remain jobs: ", idx_remain_to_exec)
+            # print("avail qpus:", avail_qpus)
+            idx_to_exec = idx_to_exec[:,0]
+            # print("reqs:", arrival_times_iter[idx_to_exec], np.array(qpu_reqs_iter)[idx_to_exec])
+            # print("queued:", np.array(idx_remain_to_exec)[idx_to_exec], np.array(qpu_reqs_iter)[idx_to_exec])
+            counter = 0
+            idx_exec = []
+            while len(avail_qpus)>0 and counter<len(idx_to_exec):
+                num_req_qpu = qpu_reqs_iter[idx_to_exec[counter]]
+                if len(avail_qpus)>= num_req_qpu:
+                    idx_exec.append(idx_to_exec[counter])
+                    start_finish_times[idx_remain_to_exec[idx_to_exec[counter]],0] = tic
+                    start_finish_times[idx_remain_to_exec[idx_to_exec[counter]],1] = 0
+                    # start_finish_times[num_jobs-len(arrival_times_iter)+counter,2] = avail_qpus[0]
+                    qpu_list = avail_qpus[:num_req_qpu]
+                    qpu_assign[idx_remain_to_exec[idx_to_exec[counter]]] = qpu_list
+                    compute_qs = [qs_per_node*j + i  for j in qpu_list for i in range(qs_per_node)]
+                    num_gates = 10*len(compute_qs)
+                    dag, circ_depth, dag_qubit_map = construct_dag(node_qubit_list, compute_qs, num_gates)
+                    dags_list[idx_remain_to_exec[idx_to_exec[counter]]] = dag
+                    compute_qs_list[idx_remain_to_exec[idx_to_exec[counter]]] = compute_qs
+                    circ_depth_list[idx_remain_to_exec[idx_to_exec[counter]]] = circ_depth
+                    dags_qubit_map[idx_remain_to_exec[idx_to_exec[counter]]] = dag_qubit_map # don't forget to remove it.
+                    for q1 in qpu_list:
+                        avail_qpus.remove(q1)
+                    active_jobs.append(idx_remain_to_exec[idx_to_exec[counter]])
+
+                counter += 1
+            # print("executed:", arrival_times_iter[idx_exec])
+            # print("executed:",  np.array(idx_remain_to_exec)[idx_exec])
+            arrival_times_iter = np.delete(arrival_times_iter, idx_exec)
+            idx_remain_to_exec = np.delete(idx_remain_to_exec, idx_exec)
+            qpu_reqs_iter = np.delete(qpu_reqs_iter, idx_exec)
+
+        num_active_jobs = len(dags_list)
+        G_ins =  G.copy()
+        num_ir_swap = 0
+        num_tel_swap = 0
+        execute = True
+        while execute:
+            execute = False
+
+            indep_gate_seq_list = {}
+            dag_node_seq_list = {}
+            for i_dag, dag in dags_list.items():
+                dag_qubit_map = dags_qubit_map[i_dag]
+                compute_qs = compute_qs_list[i_dag]
+                indep_gate_seq = []
+                dag_node_seq = []
+                num_decendants = []
+                for node in dag.front_layer():
+                    if node.op.num_qubits< 2:
+                        dag.remove_op_node(node)
+                    if node.op.num_qubits>= 2:
+                        indep_gate_seq.append((node_qubit_list[compute_qs[dag_qubit_map[node.qargs[0]]]],node_qubit_list[compute_qs[dag_qubit_map[node.qargs[1]]]]))
+                        dag_node_seq.append(node)
+                        num_decendants.append(len([g for g in dag.bfs_successors(node)])-1)
+
+                sorted_idx = sorted(range(len(num_decendants)), key=lambda k: num_decendants[k], reverse=True)
+                # sorted_idx = sorted(range(len(num_decendants)), key=lambda x: random.random())
+                dag_node_seq = [dag_node_seq[k] for k in sorted_idx]
+                indep_gate_seq = [indep_gate_seq[k] for k in sorted_idx]
+                indep_gate_seq_list[i_dag] = indep_gate_seq
+                dag_node_seq_list[i_dag] = dag_node_seq
+
+            rand_idx = sorted(active_jobs, key=lambda x: random.random())
+            for i_job in rand_idx:
+                indep_gate_seq = indep_gate_seq_list[i_job]
+                # for i_g, g in enumerate(indep_gate_seq):
+                for i_g, g in enumerate(indep_gate_seq[:1]):
+                    n0 = g[0]
+                    n1 = g[1]
+                    if nx.has_path(G_ins,n0,n1):
+                        paths = nx.all_shortest_paths(G_ins, n0, n1, weight=None)
+                        for shortestpath in paths:
+                            if len(shortestpath)<= 3 :
+                                dags_list[i_job].remove_op_node(dag_node_seq_list[i_job][i_g])
+                                execute = True
+                                break
+                            elif len(shortestpath)> 5 :
+                                tel_ir = "tel"
+                            else:
+                                tel_ir = "ir"
+
+                            sp = []
+                            b = []
+                            # for i in range(0,len(shortestpath)-1):
+                            for i in range(1,len(shortestpath)-2):
+                                sp.append((shortestpath[i],shortestpath[i+1]))
+                                if 1 < i < len(shortestpath)-2:
+                                    sw = shortestpath[i]
+                                    if G_ins.nodes[sw]["BSM_"+tel_ir] > 0:
+                                        b.append(sw)
+                            
+                            if len(b)>=1:
+                                sw_bsm = random.sample(b,1)[0]
+                                G_ins.nodes[sw_bsm]["BSM_"+tel_ir]-= 1
+                                for u, v in sp:
+                                    if G_ins[u][v]['weight'] == 1:
+                                        G_ins.remove_edge(u, v)
+                                    else:
+                                        G_ins[u][v]['weight'] -= 1
+                                if  tel_ir == "tel":
+                                    num_tel_swap += 1
+                                else:
+                                    num_ir_swap += 1
+                                
+                                dags_list[i_job].remove_op_node(dag_node_seq_list[i_job][i_g])
+                                execute = True
+                                break
+        t_tel = 1/telecom_gen_rate * time_spdc([num_tel_swap])[0]
+        t_nir = qubit_reset * time_nir[num_ir_swap]
+        dt = max([t_tel,t_nir]) + switch_duration * ( (num_tel_swap + num_ir_swap) > 0 )
+        if dt > 0:
+            tic += dt
+        else:
+            if len(arrival_times_iter)>0:
+                tic = arrival_times_iter[0]
+                
+        if len(dags_list) > 0:
+            remain_gates = np.ones(num_jobs)
+            for i_rem in dags_list.keys():
+                remain_gates[i_rem] = len(dags_list[i_rem].gate_nodes())
+            # remain_gates = np.array([len(dag.gate_nodes()) for dag in dags_list.values()])
+            done_jobs = np.argwhere(remain_gates==0)
+            if len(done_jobs)>0:
+                done_jobs = done_jobs[:,0]
+                for i_jobs in done_jobs:
+                    if start_finish_times[i_jobs,1] == 0:
+                        # print(f"{i_jobs} is done at {tic}")
+                        start_finish_times[i_jobs,1] = tic
+                        active_jobs.remove(i_jobs)
+                        # avail_qpus += [int(start_finish_times[i_jobs,2])]
+                        avail_qpus += qpu_assign[i_jobs]
+                avail_qpus = sorted(avail_qpus)
+
+    compute_time_list = {}
+    for qpu in qpu_vals:
+        compute_time_list[qpu] = []
+
+    for i_job in range(num_jobs):
+        compute_time_list[qpu_reqs[i_job]].append(start_finish_times[i_job,1]-start_finish_times[i_job,0]) 
+
+    qpu_time = {}
+    for qpu in compute_time_list.keys():
+        if len(compute_time_list[qpu])>0:
+            qpu_time[qpu] = sum(compute_time_list[qpu])/len(compute_time_list[qpu])
+
+    return qpu_time, circ_depth_list
+
 
 def clos_job_scheduler(specs, G, vertex_list, arrival_times):
     n = specs["num_sw_ports"]
@@ -164,6 +359,7 @@ def clos_job_scheduler(specs, G, vertex_list, arrival_times):
                         for shortestpath in paths:
                             if len(shortestpath)<= 3 :
                                 dags_list[i_job].remove_op_node(dag_node_seq_list[i_job][i_g])
+                                execute = True
                                 break
                             elif len(shortestpath)> 5 :
                                 tel_ir = "tel"
@@ -358,6 +554,7 @@ def eff_network_latency_dag_multiqubit_hybrid(G, vertex_list, gate_seq_input):
                     for shortestpath in paths:
                         if len(shortestpath)<= 3 :
                             dag.remove_op_node(dag_node_seq[i_g])
+                            execute = True
                             break
                         elif len(shortestpath)> 5 :
                             tel_ir = "tel"
