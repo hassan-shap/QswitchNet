@@ -15,7 +15,6 @@ n = 6 # must be even, starts from 4
 qs_per_node = 10
 num_bsm_ir = 2
 num_bsm_tel = 2
-bandwidth = 2
 
 
 telecom_gen_rate = 1/(1e-2) # ebit average generation time in sec
@@ -44,8 +43,8 @@ specs = {
 #     time_nir = np.array(json.load(f))
 #     # print(time_nir)
 
-req_rate_list = np.logspace(-2,1.0,10)
-num_tel_bsm_list = [4] #np.arange(6,15,2)
+req_rate_list = np.logspace(-1.7,1.0,20)
+num_tel_bsm_list = np.arange(8,15,2)
 
 # num_ToR_list = np.arange(2,11,2)
 # for num_ToR in num_ToR_list:

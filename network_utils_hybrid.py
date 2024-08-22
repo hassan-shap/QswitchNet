@@ -69,7 +69,7 @@ def construct_dag(node_qubit_list, q_assignment, num_gates):
     # print(circ)
     return dag, circ_depth, dag_qubit_map
 
-def clos_job_scheduler_qpu(specs, G, vertex_list, arrival_times):
+def clos_job_scheduler_qpu(specs, G, vertex_list, arrival_times, qpu_reqs):
     JSON_PATH = "data/nir_latency.json"
     with open(JSON_PATH) as f:
         time_nir = np.array(json.load(f))
@@ -87,7 +87,7 @@ def clos_job_scheduler_qpu(specs, G, vertex_list, arrival_times):
     num_jobs = len(arrival_times)
     # print(num_jobs)
     # qpu_vals = [2,3,4,5,6]
-    qpu_reqs = np.random.choice(qpu_vals, num_jobs)
+    # qpu_reqs = np.random.choice(qpu_vals, num_jobs)
 
     start_finish_times = np.zeros((num_jobs,2))
     start_finish_times[:,1] = -1

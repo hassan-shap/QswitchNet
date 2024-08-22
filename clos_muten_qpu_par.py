@@ -66,7 +66,9 @@ for num_bsm_tel in num_tel_bsm_list:
         for i_req, req_rate in enumerate(req_rate_list):
             total_time = Niter/req_rate
             arrival_times = poisson_random_process(req_rate,total_time)
-            qpu_time, circ_depth_list  = clos_job_scheduler_qpu(specs, G, vertex_list, arrival_times)
+            num_jobs = len(arrival_times)
+            qpu_reqs = np.random.choice(qpu_vals, num_jobs)
+            qpu_time, circ_depth_list  = clos_job_scheduler_qpu(specs, G, vertex_list, arrival_times, qpu_reqs)
 
             job_duration_wait_list.append(qpu_time)
 
