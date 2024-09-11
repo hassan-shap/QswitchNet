@@ -7,8 +7,8 @@ from joblib import Parallel, delayed
 import multiprocessing
 num_cores = 28                                 
 
-Nrep = 28 # No. of repetitions for saving separate files
-Niter = 100  # number of repetions for ensemble averaging
+Nrep = 28 * 2 # No. of repetitions for saving separate files
+# Niter = 20  # number of repetions for ensemble averaging
 
 num_ToR = 4
 n = 6 # must be even, starts from 4
@@ -22,8 +22,10 @@ switch_duration = 1e-3 # average switching delay in sec
 nir_prob = 1e-2 # NIR gen prob
 qubit_reset = 1e-6 # qubit reset time in sec
 comm_qs = 4
+buffer = 4
 
 specs = {
+    "buffer_size": buffer,
     "num_sw_ports": n,
     "num_ToR" : num_ToR,
     "qs_per_node" : qs_per_node,
@@ -43,8 +45,11 @@ specs = {
 #     time_nir = np.array(json.load(f))
 #     # print(time_nir)
 
-req_rate_list = np.logspace(-1.7,1.0,20)
-num_tel_bsm_list = np.arange(8,15,2)
+# req_rate_list = np.logspace(-1.7,1.0,10)
+req_rate_list = np.logspace(-1.4,1.0,10)
+num_tel_bsm_list = [4]#np.arange(8,15,2)
+Niter0 = 200
+Niter_list = Niter0 * np.linspace(1, 5, len(req_rate_list))
 
 # num_ToR_list = np.arange(2,11,2)
 # for num_ToR in num_ToR_list:
@@ -59,23 +64,27 @@ for num_bsm_tel in num_tel_bsm_list:
 
     def runner(i_rep):
         tic = time.time()
-        job_duration_wait_list = []
+        job_list = {"exec": [] ,"completion": [], "reject": [], "qpu_usage": []}
         for i_req, req_rate in enumerate(req_rate_list):
+            Niter = Niter_list[i_req]
             total_time = Niter/req_rate
             arrival_times = poisson_random_process(req_rate,total_time)
-            start_finish_times, circ_depth_list  = clos_job_scheduler(specs, G, vertex_list, arrival_times)
+            time_sum, rej_vec, qpu_usage, circ_depth_list  = clos_job_scheduler_buffer(specs, G, vertex_list, arrival_times)
 
-            mean_compute = (start_finish_times[num_ToR:-1,1] - start_finish_times[num_ToR:-1,0]).mean()
-            mean_wait = (start_finish_times[num_ToR:-1,0] - arrival_times[num_ToR:-1]).mean()
-            job_duration_wait_list.append([mean_compute, mean_wait])
+            job_list["exec"].append(time_sum[0])
+            job_list["completion"].append(time_sum[1])
+            job_list["reject"].append(rej_vec)
+            job_list["qpu_usage"].append(qpu_usage)
 
-        fname = f"results/clos_multiten/q_N_{Niter}_n_{n}_tor_{num_ToR}_tel_{num_bsm_tel}_comm_{comm_qs}_r_{i_rep}.json"
-        with open(fname, 'w') as json_file:
-            json_file.write(json.dumps(job_duration_wait_list) + '\n')
+        fname = f"q_N_{Niter0}_buff_{buffer}_n_{n}_tor_{num_ToR}_tel_{num_bsm_tel}_comm_{comm_qs}_r_{i_rep}.json"
+        print(fname)
+        fname_path = "results/clos_multiten/" + fname
+        with open(fname_path, 'w') as json_file:
+            json_file.write(json.dumps(job_list) + '\n')
 
         toc = time.time()    
         print(f"{i_rep}, elapsed time {toc-tic} sec")
-
+    # runner(0)
     results = Parallel(n_jobs=num_cores)(delayed(runner)(i_rep) for i_rep in range(Nrep))
 
 print("Finished!")

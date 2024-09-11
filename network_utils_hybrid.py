@@ -75,6 +75,8 @@ def clos_job_scheduler_qpu(specs, G, vertex_list, arrival_times, qpu_reqs):
         time_nir = np.array(json.load(f))
         # print(time_nir)
 
+    buffer = specs["buffer_size"]
+
     n = specs["num_sw_ports"]
     telecom_gen_rate = specs["telecom_gen_rate"]
     qubit_reset = specs["qubit_reset"]
@@ -106,8 +108,11 @@ def clos_job_scheduler_qpu(specs, G, vertex_list, arrival_times, qpu_reqs):
 
     remain_gates = np.array([])
     tic = 0.0
+    num_rej = 0
+    rejected_idx = []
 
-    while len(dags_list)< num_jobs or remain_gates.sum()>0:
+    # while len(dags_list)< num_jobs or remain_gates.sum()>0:
+    while len(dags_list) + num_rej < num_jobs or remain_gates.sum()>0:
 
         idx_to_exec = np.argwhere(arrival_times_iter<=tic)
         if len(idx_to_exec)>0:
@@ -141,11 +146,16 @@ def clos_job_scheduler_qpu(specs, G, vertex_list, arrival_times, qpu_reqs):
                     active_jobs.append(idx_remain_to_exec[idx_to_exec[counter]])
 
                 counter += 1
-            # print("executed:", arrival_times_iter[idx_exec])
-            # print("executed:",  np.array(idx_remain_to_exec)[idx_exec])
-            arrival_times_iter = np.delete(arrival_times_iter, idx_exec)
-            idx_remain_to_exec = np.delete(idx_remain_to_exec, idx_exec)
-            qpu_reqs_iter = np.delete(qpu_reqs_iter, idx_exec)
+            # arrival_times_iter = np.delete(arrival_times_iter, idx_exec)
+            # idx_remain_to_exec = np.delete(idx_remain_to_exec, idx_exec)
+            #### change to handle buffer size
+            idx_remain = sorted( list(set(idx_to_exec) - set(idx_exec)) )
+            num_rej += len(idx_remain[buffer:])
+            rejected_idx += np.array(idx_remain_to_exec)[idx_remain[buffer:]].tolist()
+            idx_remove = idx_remain[buffer:] + idx_exec
+            arrival_times_iter = np.delete(arrival_times_iter, idx_remove)
+            idx_remain_to_exec = np.delete(idx_remain_to_exec, idx_remove)
+            qpu_reqs_iter = np.delete(qpu_reqs_iter, idx_remove)
 
         num_active_jobs = len(dags_list)
         G_ins =  G.copy()
@@ -234,6 +244,7 @@ def clos_job_scheduler_qpu(specs, G, vertex_list, arrival_times, qpu_reqs):
                 
         if len(dags_list) > 0:
             remain_gates = np.ones(num_jobs)
+            remain_gates[rejected_idx] = 0
             for i_rem in dags_list.keys():
                 remain_gates[i_rem] = len(dags_list[i_rem].gate_nodes())
             # remain_gates = np.array([len(dag.gate_nodes()) for dag in dags_list.values()])
@@ -241,7 +252,7 @@ def clos_job_scheduler_qpu(specs, G, vertex_list, arrival_times, qpu_reqs):
             if len(done_jobs)>0:
                 done_jobs = done_jobs[:,0]
                 for i_jobs in done_jobs:
-                    if start_finish_times[i_jobs,1] == 0:
+                    if start_finish_times[i_jobs,1] == 0 and i_jobs not in rejected_idx:
                         # print(f"{i_jobs} is done at {tic}")
                         start_finish_times[i_jobs,1] = tic
                         active_jobs.remove(i_jobs)
@@ -249,19 +260,249 @@ def clos_job_scheduler_qpu(specs, G, vertex_list, arrival_times, qpu_reqs):
                         avail_qpus += qpu_assign[i_jobs]
                 avail_qpus = sorted(avail_qpus)
 
-    compute_time_list = {}
+    # compute_time_list = {}
+    # for qpu in qpu_vals:
+    #     compute_time_list[qpu] = []
+
+    # for i_job in range(num_jobs):
+    #     compute_time_list[qpu_reqs[i_job]].append(start_finish_times[i_job,1]-start_finish_times[i_job,0]) 
+
+    # qpu_time = {}
+    # for qpu in compute_time_list.keys():
+    #     if len(compute_time_list[qpu])>0:
+    #         qpu_time[qpu] = sum(compute_time_list[qpu])/len(compute_time_list[qpu])
+    execute_time_list = {}
+    completion_time_list = {}
     for qpu in qpu_vals:
-        compute_time_list[qpu] = []
-
-    for i_job in range(num_jobs):
-        compute_time_list[qpu_reqs[i_job]].append(start_finish_times[i_job,1]-start_finish_times[i_job,0]) 
-
+        execute_time_list[qpu] = []
+        completion_time_list[qpu] = []
+    for i_job in range(buffer, num_jobs):
+        dt = start_finish_times[i_job,1]-start_finish_times[i_job,0]
+        # if dt > 0:
+        if i_job not in rejected_idx:
+            execute_time_list[qpu_reqs[i_job]].append(dt) 
+            completion_time_list[qpu_reqs[i_job]].append(start_finish_times[i_job,1]-arrival_times[i_job])   
+            
+    # print("dt", start_finish_times[:,1]-start_finish_times[:,0])
+    # print("exec:", execute_time_list)
+    # print("comp:", completion_time_list)
+    
     qpu_time = {}
-    for qpu in compute_time_list.keys():
-        if len(compute_time_list[qpu])>0:
-            qpu_time[qpu] = sum(compute_time_list[qpu])/len(compute_time_list[qpu])
+    comp_time = {}
+    for qpu in execute_time_list.keys():
+        if len(execute_time_list[qpu])>0:
+            qpu_time[qpu] = sum(execute_time_list[qpu])/len(execute_time_list[qpu])
+            comp_time[qpu] = sum(completion_time_list[qpu])/len(completion_time_list[qpu])
 
-    return qpu_time, circ_depth_list
+    # print("mean exec src:", qpu_time)
+    # print("mean comp src:", comp_time)
+    print(f"{num_rej} was rejected out of {num_jobs}: {num_rej/num_jobs}")
+    return qpu_time, comp_time, circ_depth_list
+
+def clos_job_scheduler_buffer(specs, G, vertex_list, arrival_times):
+    buffer = specs["buffer_size"]
+    n = specs["num_sw_ports"]
+    telecom_gen_rate = specs["telecom_gen_rate"]
+    switch_duration = specs["switch_duration"]
+    num_ToR = specs["num_ToR"]
+    qs_per_node = specs["qs_per_node"]
+    _, _, node_qubit_list = vertex_list
+
+    # telecom_gen_rate = 1/(1e-2) # ebit average generation time in sec
+    # switch_duration = 1e-3 # average switching delay in sec
+
+    num_jobs = len(arrival_times)
+    start_finish_times = np.zeros((num_jobs,3))
+    start_finish_times[:,1] = -1
+    idx_remain_to_exec = list(range(num_jobs))
+
+    avail_qpus = list(range(num_ToR))
+    arrival_times_iter = arrival_times.copy()
+
+    dags_list = {}
+    circ_depth_list = {}
+    dags_qubit_map = {}
+    compute_qs_list = {}
+    active_jobs = []
+    qpu_runtime = {}
+    for i in range(num_ToR):
+        qpu_runtime[i] = []
+
+    remain_gates = np.array([])
+    tic = 0.0
+    num_rej = 0
+    rejected_idx = []
+    # while len(dags_list)< num_jobs or remain_gates.sum()>0:
+    while len(dags_list) + num_rej < num_jobs or remain_gates.sum()>0:
+
+        idx_to_exec = np.argwhere(arrival_times_iter<=tic)
+        if len(idx_to_exec)>0:
+            # print(f"time: {tic}")
+            # print("avail qpus:", avail_qpus)
+            idx_to_exec = idx_to_exec[:,0]
+            # print("reqs:", arrival_times_iter[idx_to_exec])
+            counter = 0
+            idx_exec = []
+            while len(avail_qpus)>0 and counter<len(idx_to_exec):
+                idx_exec.append(idx_to_exec[counter])
+                start_finish_times[idx_remain_to_exec[idx_to_exec[counter]],0] = tic
+                start_finish_times[idx_remain_to_exec[idx_to_exec[counter]],1] = 0
+                start_finish_times[idx_remain_to_exec[idx_to_exec[counter]],2] = avail_qpus[0]
+                compute_qs = [qs_per_node*num_ToR*j + i + qs_per_node*avail_qpus[0]  for j in range(n**2//4) for i in range(qs_per_node)]
+                num_gates = 10*len(compute_qs)
+                dag, circ_depth, dag_qubit_map = construct_dag(node_qubit_list, compute_qs, num_gates)
+                # dags_list.append(dag)
+                # compute_qs_list.append(compute_qs)
+                # circ_depth_list.append(circ_depth)
+                # dags_qubit_map.append(dag_qubit_map) # don't forget to remove it.
+                dags_list[idx_remain_to_exec[idx_to_exec[counter]]] = dag
+                compute_qs_list[idx_remain_to_exec[idx_to_exec[counter]]] = compute_qs
+                circ_depth_list[idx_remain_to_exec[idx_to_exec[counter]]] = circ_depth
+                dags_qubit_map[idx_remain_to_exec[idx_to_exec[counter]]] = dag_qubit_map 
+                active_jobs.append(idx_remain_to_exec[idx_to_exec[counter]])
+                avail_qpus.remove(avail_qpus[0])
+                counter += 1
+
+            # arrival_times_iter = np.delete(arrival_times_iter, idx_exec)
+            idx_remain = sorted( list(set(idx_to_exec) - set(idx_exec)) )
+            num_rej += len(idx_remain[buffer:])
+            rejected_idx += np.array(idx_remain_to_exec)[idx_remain[buffer:]].tolist()
+            idx_remove = idx_remain[buffer:] + idx_exec
+            arrival_times_iter = np.delete(arrival_times_iter, idx_remove)
+            idx_remain_to_exec = np.delete(idx_remain_to_exec, idx_remove)
+
+        num_active_jobs = len(dags_list)
+        G_ins =  G.copy()
+        num_ir_swap = 0
+        num_tel_swap = 0
+        execute = True
+        while execute:
+            execute = False
+
+            indep_gate_seq_list = {}
+            dag_node_seq_list = {}
+            for i_dag, dag in dags_list.items():
+                dag_qubit_map = dags_qubit_map[i_dag]
+                compute_qs = compute_qs_list[i_dag]
+                indep_gate_seq = []
+                dag_node_seq = []
+                num_decendants = []
+                for node in dag.front_layer():
+                    if node.op.num_qubits< 2:
+                        dag.remove_op_node(node)
+                    if node.op.num_qubits>= 2:
+                        indep_gate_seq.append((node_qubit_list[compute_qs[dag_qubit_map[node.qargs[0]]]],node_qubit_list[compute_qs[dag_qubit_map[node.qargs[1]]]]))
+                        dag_node_seq.append(node)
+                        num_decendants.append(len([g for g in dag.bfs_successors(node)])-1)
+
+                sorted_idx = sorted(range(len(num_decendants)), key=lambda k: num_decendants[k], reverse=True)
+                # sorted_idx = sorted(range(len(num_decendants)), key=lambda x: random.random())
+                dag_node_seq = [dag_node_seq[k] for k in sorted_idx]
+                indep_gate_seq = [indep_gate_seq[k] for k in sorted_idx]
+                indep_gate_seq_list[i_dag] = indep_gate_seq
+                dag_node_seq_list[i_dag] = dag_node_seq
+
+            rand_idx = sorted(active_jobs, key=lambda x: random.random())
+            for i_job in rand_idx:
+                indep_gate_seq = indep_gate_seq_list[i_job]
+                for i_g, g in enumerate(indep_gate_seq):
+                    n0 = g[0]
+                    n1 = g[1]
+                    if nx.has_path(G_ins,n0,n1):
+                        paths = nx.all_shortest_paths(G_ins, n0, n1, weight=None)
+                        for shortestpath in paths:
+                            if len(shortestpath)<= 3 :
+                                dags_list[i_job].remove_op_node(dag_node_seq_list[i_job][i_g])
+                                execute = True
+                                break
+                            elif len(shortestpath)> 5 :
+                                tel_ir = "tel"
+                            else:
+                                tel_ir = "ir"
+
+                            sp = []
+                            b = []
+                            # for i in range(0,len(shortestpath)-1):
+                            for i in range(1,len(shortestpath)-2):
+                                sp.append((shortestpath[i],shortestpath[i+1]))
+                                if 1 < i < len(shortestpath)-2:
+                                    sw = shortestpath[i]
+                                    if G_ins.nodes[sw]["BSM_"+tel_ir] > 0:
+                                        b.append(sw)
+                            
+                            if len(b)>=1:
+                                sw_bsm = random.sample(b,1)[0]
+                                G_ins.nodes[sw_bsm]["BSM_"+tel_ir]-= 1
+                                for u, v in sp:
+                                    if G_ins[u][v]['weight'] == 1:
+                                        G_ins.remove_edge(u, v)
+                                    else:
+                                        G_ins[u][v]['weight'] -= 1
+                                if  tel_ir == "tel":
+                                    num_tel_swap += 1
+                                else:
+                                    num_ir_swap += 1
+                                
+                                dags_list[i_job].remove_op_node(dag_node_seq_list[i_job][i_g])
+                                execute = True
+                                break
+        dt = 1/telecom_gen_rate * time_spdc([num_tel_swap])[0] + switch_duration * ( num_tel_swap > 0 )
+        if dt > 0:
+            tic += dt
+        else:
+            if len(arrival_times_iter)>0:
+                tic = arrival_times_iter[0]
+                
+        if len(dags_list) > 0:
+            remain_gates = np.ones(num_jobs)
+            remain_gates[rejected_idx] = 0
+            for i_rem in dags_list.keys():
+                remain_gates[i_rem] = len(dags_list[i_rem].gate_nodes())
+            done_jobs = np.argwhere(remain_gates==0)
+            if len(done_jobs)>0:
+                done_jobs = done_jobs[:,0]
+                for i_jobs in done_jobs:
+                    if start_finish_times[i_jobs,1] == 0 and i_jobs not in rejected_idx:
+                        # print(f"{i_jobs} is done at {tic}")
+                        start_finish_times[i_jobs,1] = tic
+                        active_jobs.remove(i_jobs)
+                        qpu_runtime[int(start_finish_times[i_jobs,2])].append([start_finish_times[i_jobs,0],start_finish_times[i_jobs,1]]) 
+                        avail_qpus += [int(start_finish_times[i_jobs,2])]
+
+    # print("dt", start_finish_times[:,1]-start_finish_times[:,0])
+    # print(f"{num_rej} was rejected out of {num_jobs}: {num_rej/num_jobs}")
+
+    accepted_idx = sorted(list(set(range(num_jobs))-set(rejected_idx)))
+    execute_time_list = []
+    completion_time_list = []
+    # for i_job in range(buffer+num_ToR, num_jobs):
+    for i_job in accepted_idx[num_ToR:]:
+        dt = start_finish_times[i_job,1]-start_finish_times[i_job,0]
+        # if i_job not in rejected_idx:
+        assert dt> 0
+        execute_time_list.append(dt) 
+        completion_time_list.append(start_finish_times[i_job,1]-arrival_times[i_job])   
+
+    total_time = start_finish_times[:,1].max()
+    t_list = np.linspace(0,total_time,int(1e5))
+    usage_list = np.zeros(len(t_list))
+    for qpu in qpu_runtime.keys():
+        for job in qpu_runtime[qpu]:
+            t1 = np.argwhere(t_list > job[0])[0,0]
+            t2 = np.argwhere(t_list <= job[1])[-1,0]
+            usage_list[t1:t2] += 1
+            
+    qpu_usage = []
+    unit_time = t_list[1] - t_list[0]
+    for i in range(num_ToR+1):
+        qpu_usage.append(len(np.argwhere(usage_list == i))*unit_time/total_time)
+
+    # print("exec:", execute_time_list)
+    # print("comp:", completion_time_list)
+
+    time_sum = [[sum(execute_time_list),len(execute_time_list)],[sum(completion_time_list),len(completion_time_list)]]
+    rej_vec = [num_jobs, num_rej]
+    return time_sum, rej_vec, qpu_usage, circ_depth_list
 
 
 def clos_job_scheduler(specs, G, vertex_list, arrival_times):

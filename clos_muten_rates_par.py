@@ -8,23 +8,25 @@ import multiprocessing
 num_cores = 28                                 
 
 Nrep = 28 # No. of repetitions for saving separate files
-Niter = 10  # number of repetions for ensemble averaging
+Niter = 20  # number of repetions for ensemble averaging
 qpu_vals = [64,16,4]
-req_rate_list = 10**np.array([0.0,0.0,0.0]) #np.logspace(-2,1.0,10)
+req_rate_list = 10**np.array([-1.0,0.0,1.0]) #np.logspace(-2,1.0,10)
 
 num_ToR = 8
 n = 8 # must be even, starts from 4
 qs_per_node = 10
 num_bsm_ir = 2
-num_bsm_tel = 2
+num_bsm_tel = 4
 
 telecom_gen_rate = 1/(1e-2) # ebit average generation time in sec
 switch_duration = 1e-3 # average switching delay in sec
 nir_prob = 1e-2 # NIR gen prob
 qubit_reset = 1e-6 # qubit reset time in sec
 comm_qs = 4
+buffer = 4
 
 specs = {
+    "buffer_size": buffer,
     "num_sw_ports": n,
     "num_ToR" : num_ToR,
     "qs_per_node" : qs_per_node,
@@ -46,7 +48,7 @@ specs = {
 #     time_nir = np.array(json.load(f))
 #     # print(time_nir)
 
-num_tel_bsm_list = [4] #np.arange(6,15,2)
+num_tel_bsm_list = [num_bsm_tel] #np.arange(6,15,2)
 
 # num_ToR_list = np.arange(2,11,2)
 # for num_ToR in num_ToR_list:
@@ -75,11 +77,12 @@ for num_bsm_tel in num_tel_bsm_list:
         arrival_times_list = [arrival_times_list[k] for k in sorted_idx]
         qpu_reqs_list = [qpu_reqs_list[k] for k in sorted_idx]
 
-        qpu_time, circ_depth_list  = clos_job_scheduler_qpu(specs, G, vertex_list, np.array(arrival_times_list), np.array(qpu_reqs_list))
+        qpu_time, comp_time, circ_depth_list  = clos_job_scheduler_qpu(specs, G, vertex_list, np.array(arrival_times_list), np.array(qpu_reqs_list))
+        job_list = {"exec" : qpu_time, "completion" : comp_time}
         # fname = f"results/clos_multiten_rates_qpu/q_N_{Niter}_n_{n}_tor_{num_ToR}_tel_{num_bsm_tel}_comm_{comm_qs}_r_{i_rep}.json"
-        fname = f"results/clos_multiten_rates_qpu/q_uniform_N_{Niter}_n_{n}_tor_{num_ToR}_tel_{num_bsm_tel}_comm_{comm_qs}_r_{i_rep}.json"
+        fname = f"results/clos_multiten_rates_qpu/q_N_{Niter}_buff_{buffer}_n_{n}_tor_{num_ToR}_tel_{num_bsm_tel}_comm_{comm_qs}_r_{i_rep}.json"
         with open(fname, 'w') as json_file:
-            json_file.write(json.dumps(qpu_time) + '\n')
+            json_file.write(json.dumps(job_list) + '\n')
 
         toc = time.time()    
         print(f"{i_rep}, elapsed time {toc-tic} sec")
