@@ -1,0 +1,1 @@
+{"vertices": {"q1": {"data_q": 10, "comm_q": 2}, "q2": {"data_q": 10, "comm_q": 2}, "q3": {"data_q": 10, "comm_q": 2}, "q4": {"data_q": 10, "comm_q": 2}, "s0": {"PD": 0, "BSM_ir": 2, "BSM_tel": 0, "Laser": 0, "BS": 0, "ES": 0}}, "edges": {"s0, q1": 2, "s0, q2": 2, "s0, q3": 2, "s0, q4": 2}}
