@@ -15,4 +15,5 @@ def ghz_circuit(n):
     
     # # Draw the circuit
     # circ.draw('mpl')
+    # print(circ.depth())
     return circ
